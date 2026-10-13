@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Run the pinned HyperFrames CLI on Node 22+, telemetry off.  Usage: hf <args…>
+set -euo pipefail
+HF_VERSION="${HF_VERSION:-0.8.137}"
+export HYPERFRAMES_NO_TELEMETRY=1
+export PRODUCER_BROWSER_GPU_MODE="${PRODUCER_BROWSER_GPU_MODE:-hardware}"
+major=$(node -v 2>/dev/null | sed 's/v\([0-9]*\).*/\1/' || echo 0)
+if [[ "${major:-0}" -lt 22 ]]; then
+  N22=$(ls -d ~/.nvm/versions/node/v2[2-9]* 2>/dev/null | sort -V | tail -1 || true)
+  if [[ -n "$N22" ]]; then export PATH="$N22/bin:$PATH"
+  elif command -v brew >/dev/null && [[ -x "$(brew --prefix)/opt/node@22/bin/node" ]]; then export PATH="$(brew --prefix)/opt/node@22/bin:$PATH"
+  else echo "HyperFrames needs Node 22+ (nvm install 22)"; exit 1; fi
+fi
+exec npx -y "hyperframes@${HF_VERSION}" "$@"
