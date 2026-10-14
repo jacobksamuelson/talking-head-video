@@ -23,28 +23,20 @@ const sb = readJSON(path.join(proj, "storyboard.json"), null) || die("storyboard
 const tlj = readJSON(path.join(proj, "work/timeline.json"), null) || die("run assemble.py first");
 const words = readJSON(path.join(proj, "work/words.edited.json"), []);
 const DUR = tlj.duration;
+// logo end slate: extra seconds after the A-roll (music and fadeOut run through it)
+const slateCfg = sb.slate === true ? {} : sb.slate || null;
+const SLATE = slateCfg ? slateCfg.dur ?? 4 : 0;
+const TOTAL = DUR + SLATE;
 const pub = path.join(proj, "public");
 const assets = path.join(pub, "assets");
 fs.mkdirSync(assets, { recursive: true });
 
 // ── themes ─────────────────────────────────────────────────────────────
-const THEMES = {
-  neutral: {
-    fonts: { Display: [["Inter-700-latin.woff2", "600 900"]], UI: [["Inter-400-latin.woff2", "300 500"], ["Inter-700-latin.woff2", "501 900"]] },
-    vars: {
-      ink: "#14151a", "ink-soft": "#3d404b", muted: "#6b6f7d",
-      accent: "#2F5BFF", "accent-2": "#FF5A1F", pop: "#FFD23F", "pop-on-video": "#FFD23F",
-      grad: "linear-gradient(100deg, #2F5BFF 0%, #9B5CFF 50%, #FF5A1F 100%)",
-      "card-bg": "rgba(255,255,255,.9)",
-      "title-bg": "radial-gradient(1100px 700px at 12% 18%, rgba(47,91,255,.12), transparent 62%), radial-gradient(900px 700px at 90% 85%, rgba(255,90,31,.10), transparent 60%), #F4F5F8",
-      "dark-bg": "radial-gradient(1000px 700px at 85% 12%, rgba(47,91,255,.5), transparent 60%), #0E1018",
-      "title-ink": "#14151a", "title-weight": "700", "title-tracking": "-0.03em",
-      radius: "30px", margin: "96px", sweep: "#FF5A1F",
-    },
-  },
-};
+// themes (colors, fonts) and brand logos live in assets/themes.json
+const TH = readJSON(path.join(SKILL, "assets/themes.json"), null) || die("assets/themes.json missing");
+const THEMES = TH.themes;
 const themeCfg = typeof sb.theme === "string" ? { base: sb.theme } : sb.theme || {};
-const theme = THEMES[themeCfg.base || "neutral"] || die(`unknown theme ${themeCfg.base}`);
+const theme = THEMES[themeCfg.base || TH.defaultTheme] || die(`unknown theme ${themeCfg.base}`);
 const vars = { ...theme.vars };
 for (const [k, v] of Object.entries(themeCfg)) if (k !== "base") vars[k] = v;
 
@@ -111,6 +103,14 @@ function stage(rel) {
   const r = { url: `assets/media/${name}`, abs: dst, ...mediaInfo(src), isVideo: /\.(mp4|mov|m4v|webm)$/i.test(src) };
   copied.set(rel, r);
   return r;
+}
+function stageFile(rel, base = proj) {
+  const src = path.isAbsolute(rel) ? rel : path.join(base, rel);
+  if (!fs.existsSync(src)) die(`file not found: ${rel}`);
+  const name = path.basename(src).replace(/[^\w.-]+/g, "_");
+  fs.mkdirSync(path.join(assets, "brand"), { recursive: true });
+  fs.copyFileSync(src, path.join(assets, "brand", name));
+  return `assets/brand/${name}`;
 }
 const SPARK = `<svg class="spark" viewBox="0 0 40 40"><defs><linearGradient id="sg-ID" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset=".55" stop-color="#7B5CFF"/><stop offset="1" stop-color="var(--accent-2)"/></linearGradient></defs><path fill="url(#sg-ID)" d="M20 3c1.2 7.6 4.4 12.8 17 17-12.6 4.2-15.8 9.4-17 17-1.2-7.6-4.4-12.8-17-17C15.6 15.8 18.8 10.6 20 3z"/></svg>`;
 const SEND = `<svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -230,6 +230,10 @@ const C = {
     dur: 3,
     html: () => "",
   },
+  mark: {
+    dur: 2.5,
+    html: () => "",
+  },
   html: {
     dur: 4,
     html(o, id) {
@@ -267,7 +271,7 @@ for (const t of resolved.filter((o) => o.type === "title"))
 for (let a = 0; a < resolved.length; a++)
   for (let b = a + 1; b < resolved.length; b++) {
     const A = resolved[a], B = resolved[b];
-    if (A.type === "zoom" || B.type === "zoom") continue;  // zooms are trimmed to their recording later
+    if (["zoom", "mark"].includes(A.type) || ["zoom", "mark"].includes(B.type)) continue;  // these live inside the screen recording
     const zone = (o) => (["title", "demo"].includes(o.type) ? "full" : o.type === "lowerThird" ? "lt" : o.side || "left");
     if (zone(A) === zone(B) && A.start < B.end && B.start < A.end) console.warn(`WARN overlap: ${A.id} (${A.type}) and ${B.id} (${B.type}) share the ${zone(A)} zone during ${Math.max(A.start, B.start).toFixed(2)}–${Math.min(A.end, B.end).toFixed(2)}s`);
   }
@@ -307,11 +311,19 @@ for (const s of tlj.segments) {
   else screenRuns.push([s.out[0], s.out[1]]);
 }
 const inRun = (t) => screenRuns.find((r) => t >= r[0] - 0.01 && t < r[1]);
+if (sb.screenStyle === "fill") {
+  // full-bleed crops whatever doesn't match 16:9; narrow or tall recordings lose a lot
+  const seen = new Set();
+  for (const s of tlj.segments.filter((x) => x.kind === "screen" && x.screen)) {
+    const k = Math.max(1 / s.screen.w, 1 / s.screen.h), key = k.toFixed(3);
+    if (k > 1.2 && !seen.has(key)) { seen.add(key); console.warn(`WARN screenStyle "fill" crops ${Math.round((1 - 1 / k) * 100)}% of the recording at ${s.out[0].toFixed(2)}s (it isn't 16:9) — check that zoom and mark rects stay in frame, or use "framed"`); }
+  }
+}
 for (const o of resolved) {
   const run = inRun(o.start + 0.05);
-  if (o.type === "zoom") {
-    if (!run) die(`${o.id} (zoom) starts at ${o.start.toFixed(2)}s, which is not inside a screen recording`);
-    if (o.end > run[1]) { console.warn(`NOTE ${o.id} (zoom) trimmed to end with its screen recording at ${run[1].toFixed(2)}s`); o.end = q(run[1]); }
+  if (o.type === "zoom" || o.type === "mark") {
+    if (!run) die(`${o.id} (${o.type}) starts at ${o.start.toFixed(2)}s, which is not inside a screen recording`);
+    if (o.end > run[1]) { console.warn(`NOTE ${o.id} (${o.type}) trimmed to end with its screen recording at ${run[1].toFixed(2)}s`); o.end = q(run[1]); }
     continue;
   }
   const overlaps = screenRuns.some((r) => o.start < r[1] && r[0] < o.end);
@@ -322,21 +334,34 @@ for (const o of resolved) {
     console.warn(`WARN ${o.id} (${o.type}) overlaps a screen recording — on screen footage use zoom, callout or title instead`);
 }
 
+// highlight marks on narrated screen recordings. rect is a fraction of the recording, like zoom.
+const segAtT = (t) => tlj.segments.find((s) => t < s.out[1]) || tlj.segments[tlj.segments.length - 1];
+const marksHTML = resolved.filter((o) => o.type === "mark").map((o) => {
+  const r = segAtT(o.start + 0.05).screen, R = o.rect || die(`${o.id} (mark) needs "rect"`);
+  const pad = o.style === "ring" ? 10 : 4;
+  const box = [(r.x + R[0] * r.w) * W - pad, (r.y + R[1] * r.h) * H - pad, R[2] * r.w * W + 2 * pad, R[3] * r.h * H + 2 * pad].map((v) => v.toFixed(1));
+  return `<div class="mark mark-${o.style === "ring" ? "ring" : "highlight"}" id="${o.id}-mark" style="left:${box[0]}px;top:${box[1]}px;width:${box[2]}px;height:${box[3]}px"></div>`;
+}).join("");
+
 // ── captions ───────────────────────────────────────────────────────────
 let captionsHTML = "";
 const capChunks = [];
-if (sb.captions) {
+const capCfg = sb.captions === true ? {} : sb.captions || null;
+if (capCfg) {
+  // "boxed": short 2–4 word chunks in a solid box, the LinkedIn launch-video look
+  const boxed = capCfg.style === "boxed";
+  const maxWords = capCfg.maxWords ?? (boxed ? 4 : 6), maxChars = capCfg.maxChars ?? (boxed ? 24 : 34);
   let cur = [];
   const flush = () => { if (cur.length) capChunks.push(cur); cur = []; };
   for (let i = 0; i < words.length; i++) {
     const w = words[i], prev = cur[cur.length - 1];
     const len = cur.map((x) => x.text).join(" ").length;
-    if (prev && (w.start - prev.end > 0.35 || len + w.text.length > 34 || cur.length >= 6 || w.seg !== prev.seg)) flush();
+    if (prev && (w.start - prev.end > 0.35 || len + w.text.length > maxChars || cur.length >= maxWords || w.seg !== prev.seg)) flush();
     cur.push(w);
     if (/[.?!]$/.test(w.text)) flush();
   }
   flush();
-  captionsHTML = `<div id="captions" data-mode="normal">${capChunks.map((c, k) => `<div class="cap-chunk" id="cap${k}">${c.map((w, j) => `<span class="cw" id="cap${k}-${j}">${esc(w.text)}</span>`).join(" ")}</div>`).join("")}</div>`;
+  captionsHTML = `<div id="captions" data-mode="normal" data-style="${boxed ? "boxed" : "plain"}">${capChunks.map((c, k) => `<div class="cap-chunk" id="cap${k}">${c.map((w, j) => `<span class="cw" id="cap${k}-${j}">${esc(w.text)}</span>`).join(" ")}</div>`).join("")}</div>`;
 }
 
 // ── sfx + music ────────────────────────────────────────────────────────
@@ -348,7 +373,7 @@ const addSfx = (name, t, vol) => {
   fs.mkdirSync(path.dirname(dst), { recursive: true });
   if (!fs.existsSync(dst)) fs.copyFileSync(path.join(SKILL, "assets/sfx", `${name}.wav`), dst);
   const len = { whoosh: 0.6, pop: 0.18, tick: 0.03 }[name];
-  if (t + len > DUR) return;
+  if (t + len > TOTAL) return;
   audioTags.push(`<audio id="sfx${++sfxN}" src="assets/sfx/${name}.wav" data-start="${q(Math.max(0, t)).toFixed(4)}" data-duration="${len}" data-volume="${vol}" data-track-index="5"></audio>`);
 };
 for (const o of resolved) {
@@ -358,8 +383,28 @@ for (const o of resolved) {
 if (sb.music?.src) {
   const src = path.join(proj, sb.music.src);
   const dst = path.join(assets, "music.m4a");
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", src, "-t", String(DUR), "-af", `afade=t=in:d=1,afade=t=out:st=${Math.max(0, DUR - 2.5)}:d=2.5`, "-c:a", "aac", "-b:a", "192k", dst]);
-  audioTags.push(`<audio id="music" src="assets/music.m4a" data-start="0" data-duration="${DUR}" data-volume="${sb.music.volume ?? 0.12}" data-track-index="6"></audio>`);
+  const fade = Math.max(2.5, sb.fadeOut || 0);
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", src, "-t", String(TOTAL), "-af", `afade=t=in:d=1,afade=t=out:st=${Math.max(0, TOTAL - fade)}:d=${fade}`, "-c:a", "aac", "-b:a", "192k", dst]);
+  audioTags.push(`<audio id="music" src="assets/music.m4a" data-start="0" data-duration="${TOTAL}" data-volume="${sb.music.volume ?? 0.12}" data-track-index="6"></audio>`);
+}
+
+// ── logo end slate ─────────────────────────────────────────────────────
+let slateHTML = "";
+if (slateCfg) {
+  // "brand" pulls a logo set from assets/themes.json → brands; anything set here overrides it
+  const brand = slateCfg.brand ? (TH.brands || {})[slateCfg.brand] || die(`unknown slate brand "${slateCfg.brand}" (see assets/themes.json → brands)`) : {};
+  const img = (key, cls, h) => {
+    const rel = slateCfg[key] ?? brand[key];
+    if (!rel) return "";
+    const url = stageFile(rel, slateCfg[key] ? proj : SKILL);
+    return `<img class="${cls}" id="slate-${key}" src="${url}" alt="" style="height:${h}px">`;
+  };
+  const logo = img("logo", "slate-logo", slateCfg.logoHeight ?? brand.logoHeight ?? 120)
+    || (slateCfg.text ? `<div class="slate-word" id="slate-logo">${esc(slateCfg.text)}</div>` : die(`slate needs "logo" (an image), "text" (a wordmark), or "brand"`));
+  const sub = img("sublogo", "slate-sub", slateCfg.sublogoHeight ?? brand.sublogoHeight ?? 52);
+  const tag = slateCfg.tagline ? `<div class="slate-tag" id="slate-tagline">${esc(slateCfg.tagline)}</div>` : "";
+  const url = slateCfg.url ? `<div class="slate-url" id="slate-url">${esc(slateCfg.url)}</div>` : "";
+  slateHTML = `<div id="slate"${slateCfg.bg ? ` style="background:${esc(slateCfg.bg)}"` : ""}><div class="slate-inner">${logo}${sub}${tag}${url}</div></div>`;
 }
 
 // ── fonts + static assets ──────────────────────────────────────────────
@@ -381,13 +426,14 @@ const rootVars = `:root{${Object.entries(vars).map(([k, v]) => `--${k}:${v}`).jo
 
 // ── story payload for runtime.js ───────────────────────────────────────
 const story = {
-  duration: DUR, fps: FPS, width: W, height: H,
+  duration: TOTAL, arollEnd: DUR, fps: FPS, width: W, height: H,
+  slate: slateCfg ? { dur: SLATE } : null,
   faceMotion: sb.faceMotion ?? "drift",
   vars,
   segments: tlj.segments.map((s) => ({ out: s.out, face: s.face, zoom: s.zoom, kind: s.kind || "face", screen: s.screen || null })),
   screenStyle: sb.screenStyle || "framed",
   fadeOut: sb.fadeOut || 0,
-  captionsOn: !!sb.captions,
+  captionsOn: !!capCfg,
   overlays: resolved.map((o) => {
     const { html, ...rest } = o;
     return rest;
@@ -411,13 +457,14 @@ ${baseCSS}
 </style>
 </head>
 <body>
-<div id="root" data-composition-id="main" data-start="0" data-width="${W}" data-height="${H}" data-duration="${DUR}">
+<div id="root" data-composition-id="main" data-start="0" data-width="${W}" data-height="${H}" data-duration="${TOTAL}">
 <div id="screen-bg" class="layer"></div><div id="screen-shadow"></div>
-<div id="face" class="layer"><div id="face-drift" class="layer"><video id="aroll" src="aroll.mp4" playsinline data-has-audio="true" data-start="0" data-duration="${DUR}" data-track-index="0"></video></div></div>
+<div id="face" class="layer"><div id="face-drift" class="layer"><video id="aroll" src="aroll.mp4" playsinline data-has-audio="true" data-start="0" data-duration="${DUR}" data-track-index="0"></video>${marksHTML}</div></div>
 <div id="pip-ring"></div>
 <div id="fade-black"></div>
 ${overlayHTML}
 ${captionsHTML}
+${slateHTML}
 ${audioTags.join("\n")}
 </div>
 <script>window.__STORY = ${JSON.stringify(story)};</script>
@@ -431,5 +478,5 @@ ${runtimeJS}
 fs.writeFileSync(path.join(pub, "index.html"), page);
 fs.writeFileSync(path.join(proj, "work/overlays.resolved.json"), JSON.stringify(story.overlays, null, 1));
 
-console.log(`index.html: ${DUR.toFixed(2)}s, ${resolved.length} overlays${sb.captions ? `, ${capChunks.length} caption chunks` : ""}${audioTags.length ? `, ${audioTags.length} audio cues` : ""}`);
+console.log(`index.html: ${TOTAL.toFixed(2)}s${SLATE ? ` (incl. ${SLATE}s slate)` : ""}, ${resolved.length} overlays${capCfg ? `, ${capChunks.length} caption chunks` : ""}${audioTags.length ? `, ${audioTags.length} audio cues` : ""}`);
 for (const o of resolved) console.log(`  ${o.id.padEnd(5)} ${o.type.padEnd(10)} ${o.start.toFixed(2).padStart(6)} → ${o.end.toFixed(2).padStart(6)}  ${(o.prompt || o.caption || o.name || (o.lines || []).join(" / ") || o.text || o.value || o.src || "").toString().slice(0, 60)}`);

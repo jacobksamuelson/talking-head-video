@@ -1,0 +1,45 @@
+{
+ "defaultTheme": "neutral",
+ "themes": {
+  "neutral": {
+   "fonts": {
+    "Display": [
+     [
+      "Inter-700-latin.woff2",
+      "600 900"
+     ]
+    ],
+    "UI": [
+     [
+      "Inter-400-latin.woff2",
+      "300 500"
+     ],
+     [
+      "Inter-700-latin.woff2",
+      "501 900"
+     ]
+    ]
+   },
+   "vars": {
+    "ink": "#14151a",
+    "ink-soft": "#3d404b",
+    "muted": "#6b6f7d",
+    "accent": "#2F5BFF",
+    "accent-2": "#FF5A1F",
+    "pop": "#FFD23F",
+    "pop-on-video": "#FFD23F",
+    "grad": "linear-gradient(100deg, #2F5BFF 0%, #9B5CFF 50%, #FF5A1F 100%)",
+    "card-bg": "rgba(255,255,255,.9)",
+    "title-bg": "radial-gradient(1100px 700px at 12% 18%, rgba(47,91,255,.12), transparent 62%), radial-gradient(900px 700px at 90% 85%, rgba(255,90,31,.10), transparent 60%), #F4F5F8",
+    "dark-bg": "radial-gradient(1000px 700px at 85% 12%, rgba(47,91,255,.5), transparent 60%), #0E1018",
+    "title-ink": "#14151a",
+    "title-weight": "700",
+    "title-tracking": "-0.03em",
+    "radius": "30px",
+    "margin": "96px",
+    "sweep": "#FF5A1F"
+   }
+  }
+ },
+ "brands": {}
+}

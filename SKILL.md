@@ -1,6 +1,6 @@
 ---
 name: talking-head-video
-description: Make polished talking-head product videos from the user's recordings (webcam or phone camera takes and/or narrated ⌘⇧5 screen recordings) — their face on camera with animated product overlays (screenshots in floating cards with zoom + highlight, AI chat prompts that type and stream answers, kinetic title cards, lower thirds, stat callouts, prompt bubbles, full-frame product demos with his face in a corner circle), screen recordings framed as cards with smooth zooms, jump-cut editing with punch-ins, retakes removed automatically, cleaned -16 LUFS audio, optional captions. Covers the whole loop — script + shot list, how to record, setup check, ingest/transcribe, cut, storyboard, render. Use when the user wants a video "like the Toast/Maggie one", a launch or product-update video, a LinkedIn video, says "check my video setup", "edit my recording", "make a video from this footage", or drops camera files in a videos project. Also for narrated screen recordings on their own ("turn this screen recording into something better than a Loom").
+description: Make polished talking-head product videos from the user's recordings (webcam or phone camera takes and/or narrated ⌘⇧5 screen recordings) — their face on camera with animated product overlays (screenshots in floating cards with zoom + highlight, AI chat prompts that type and stream answers, kinetic title cards, lower thirds, stat callouts, prompt bubbles, full-frame product demos with their face in a corner circle), screen recordings framed as cards or full-bleed with smooth follow zooms and highlight marks, jump-cut editing with punch-ins, retakes removed automatically, cleaned -16 LUFS audio, boxed captions, a logo end slate. Covers the whole loop — script + shot list, how to record, setup check, ingest/transcribe, cut, storyboard, render. Use when the user wants a video "like the Toast/Maggie one", a launch or product-update video, a LinkedIn video, says "check my video setup", "edit my recording", "make a video from this footage", or drops camera files in a videos project. Also for narrated screen recordings on their own ("turn this screen recording into something better than a Loom").
 ---
 
 # Talking-head product video
@@ -44,7 +44,13 @@ SKILL/scripts/hf doctor        # Chrome + ffmpeg for rendering; whisper-cpp/TTS/
 
 1. Run `SKILL/scripts/new_project.sh <slug> "Title"`. It prints the folder.
 2. Ask, briefly: who the video is for, the one thing they should take away, and which product moments to show (URLs, features, prompts).
-3. Write `script.md` from the template: 5–8 beats, 45–90 s (≈140 words/min), short spoken sentences, each beat paired with its on-screen visual. Follow the structure in `reference/style.md`. List the visuals the user must capture by hand, and capture public URLs yourself:
+3. Write `script.md` from the template: 5–8 beats, 60–100 s (≈140 words/min), short spoken sentences, each beat paired with its on-screen visual. Follow the structure in `reference/style.md`:
+   - open on the viewer's problem, never "Hi, I'm…"
+   - say the roadmap out loud ("Here are three…")
+   - give each beat a claim → a concrete example → the product showing it
+   - close in one or two sentences
+
+   List the visuals the user must capture by hand, and capture public URLs yourself:
    `SKILL/scripts/capture.sh <url> <proj>/screens/NN-name.png 1440 900`
 4. Add product names and jargon to `project.json` → `vocab`. This steers transcription.
 5. Hand off with the folder path and the **Recording a video** and **Product visuals** sections of `RECORDING.md`. On a first recording, also include the one-time setup and ask for a 5-second test clip.
@@ -77,7 +83,15 @@ Copy `work/phrases.json` → `cuts.json`. Then review every line against the scr
 
 Run `python3 SKILL/scripts/assemble.py <proj> --fast` first. That produces `work/words.edited.json` (the exact words to anchor on) and `work/timeline.json` (segments, face position per segment).
 
-Then write overlays per `reference/storyboard.md`, one per script beat that has a visual, anchored to the spoken phrase. Over narrated screen recordings, add a `zoom` for each thing the user points at, using the transcript and a look at the footage to find the rect. Extract a frame with ffmpeg and read it to locate the region. Defaults: `"theme": "neutral"` (set brand colors through `theme`), captions on for LinkedIn, `sfx` whoosh only (no pops).
+Then write overlays per `reference/storyboard.md`, one per script beat that has a visual, anchored to the spoken phrase. Over narrated screen recordings, add a `zoom` for each thing the user points at, using the transcript and a look at the footage to find the rect. Extract a frame with ffmpeg and read it to locate the region. Use `to` when the result streams in or runs down the page, and add a `mark` on the one line that carries the point.
+
+Defaults for LinkedIn:
+
+- `"theme": "neutral"` (set brand colors through `theme`)
+- `"captions": {"style": "boxed"}`
+- `"slate"` with the user's logo (ask for an SVG or PNG; their own company's logo only)
+- `sfx` whoosh only (no pops)
+- `"screenStyle": "fill"` when the product is the star of the video
 
 ## 5. Assemble → polish → build → check
 
@@ -100,6 +114,7 @@ SKILL/scripts/hf snapshot . --at <mid-point of each overlay, comma-separated>
   - a mid-sentence content cut
   - no breath at a content cut
   - dead air over 1.4 s
+  - an intro-first opening ("Hey, I'm Sam…") and a close over ~12 s. These are story notes, not cut bugs. Fix them in the script or cuts, or tell the user and let them decide.
 
   Fixes:
   - **Clipped word:** move the cut into the silence. Ingest and polish snap their cuts to the quietest 20 ms, but a hand-written `remove` range doesn't snap, so check the waveform for those.

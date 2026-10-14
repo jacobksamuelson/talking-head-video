@@ -18,6 +18,12 @@ cut between segments it checks:
   ⚠️ edge voice      speech-level sound in the last/first 40 ms of a piece (possible clip)
   ⚠️ dead air        a silence over 1.4 s that isn't a deliberate hold
 
+And two checks on the shape of the story:
+
+  ⚠️ intro first     the video opens with "Hi, I'm…" instead of the viewer's problem
+                     (the lower third already says who you are)
+  ⚠️ long close      more than ~12 s of talking after the last product moment
+
 Writes work/review.md and prints it. Fix every ❌; fix or knowingly accept every ⚠️.
 Usage: uv run review.py <project_dir>
 """
@@ -128,7 +134,7 @@ def main():
             if op == "equal":
                 continue
             if op == "replace" and i2 - i1 == j2 - j1 and all(similar(x, y) for x, y in zip(expected[i1:i2], heard[j1:j2])):
-                continue  # same words, different spelling ("Soroosh" / "Sourouche")
+                continue  # same words, different spelling ("Siobhan" / "Shivaun")
             near = [w for w in expected[i1:i2] if abs(w["end"] - T) < 0.6 or abs(w["start"] - T) < 0.6]
             extra = [w for w in heard[j1:j2] if abs(w["start"] - T) < 0.6]
             if op in ("replace", "delete") and near:
@@ -192,6 +198,24 @@ def main():
         seg = next((s for s in segs if s["out"][0] <= p["end"] < s["out"][1]), None)
         if gap > 1.4 and not (seg and (held.get(seg["i"]) or seg.get("hold"))):
             add("⚠️", p["end"], "dead air", f"{gap:.1f}s silence after \"{p['text']}\"")
+
+    # story shape: open on the problem, not an introduction
+    opening = " ".join(norm(w["text"]) for w in hw[:12])
+    if re.match(r"(hey|hi|hello|welcome)\b", opening) or re.search(r"\b(my name is|i'm \w+ (and|from|i)|this is \w+ (and|from|i))\b", opening):
+        add("⚠️", hw[0]["start"] if hw else 0, "intro first", f"opens with \"{' '.join(w['text'] for w in hw[:8])}…\". Lead with the viewer's problem or the news; the lower third already says who you are")
+
+    # story shape: a short close. The last product moment is the end of the last screen
+    # recording, or of the last product overlay from the latest build.
+    product_end = max([s["out"][1] for s in segs if s["kind"] == "screen"] or [0])
+    ovf = work / "overlays.resolved.json"
+    if ovf.exists():
+        for o in json.loads(ovf.read_text()):
+            if o["type"] in ("screen", "chat", "demo", "zoom", "mark", "bubbles", "callout"):
+                product_end = max(product_end, o["end"])
+    tail = [w for w in hw if w["start"] >= product_end]
+    if product_end and tail and tail[-1]["end"] - tail[0]["start"] > 12:
+        n = max(1, sum(1 for w in tail if re.search(r"[.?!]$", w["text"])))
+        add("⚠️", tail[0]["start"], "long close", f"{tail[-1]['end'] - tail[0]['start']:.0f}s of talking ({n} sentences) after the last product moment at {mmss(product_end)}; keep the close to 1–2 sentences, under ~12 s")
 
     issues.sort(key=lambda r: r[1])
     lines = [f"# Cut review: {len(segs) - 1} cuts, {sum(1 for r in issues if r[0] == '❌')} must-fix, {sum(1 for r in issues if r[0] == '⚠️')} to check", ""]

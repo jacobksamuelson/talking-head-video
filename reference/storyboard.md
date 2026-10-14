@@ -25,7 +25,7 @@ This is an array of phrases from ingest, in playback order. Reordering the array
 
 Segments form automatically. Consecutive kept phrases from one take stay together when the pause between them is under 0.7 s (3 s for narrated screen recordings, so silent clicks and typing survive) and nothing was dropped between them.
 
-**Narrated screen recordings** are takes of kind `"screen"`. Ingest sets this for files named "Screen Recording …" or with no face; override it in project.json → `"kinds": {"file.mov": "face"}`. They are fitted whole into the frame instead of face-cropped. The composition shows them as a rounded card on the theme background (`"screenStyle": "full"` in storyboard.json shows them edge to edge instead). Captions switch to the dark box over them. Each new segment alternates the `framing.pattern` zoom (default `[1.0, 1.18]`) unless a phrase sets `zoom`.
+**Narrated screen recordings** are takes of kind `"screen"`. Ingest sets this for files named "Screen Recording …" or with no face; override it in project.json → `"kinds": {"file.mov": "face"}`. They are fitted whole into the frame instead of face-cropped. The composition shows them as a rounded card on the theme background. Set `"screenStyle"` in storyboard.json to `"full"` to fit them edge to edge with no card, or `"fill"` to fill the whole frame (full-bleed, cropping the edges that don't fit). Captions switch to the dark box over them. Each new segment alternates the `framing.pattern` zoom (default `[1.0, 1.18]`) unless a phrase sets `zoom`.
 
 After `assemble.py`, `work/timeline.json` lists the segments with output times, and `work/words.edited.json` holds every kept word on the edited timeline. Read that file for exact anchor phrases.
 
@@ -35,7 +35,10 @@ After `assemble.py`, `work/timeline.json` lists the segments with output times, 
 {
   "title": "AI Skills Studio launch",
   "theme": "neutral",                   // or {"base":"neutral","accent":"#...","accent-2":"#..."} to use your brand colors
-  "captions": true,                     // burned-in word-highlight captions (good for muted LinkedIn autoplay)
+  "captions": {"style": "boxed"},       // burned-in word-highlight captions; true = plain, 6-word lines
+                                        // "boxed" = 2–4 words in a solid box; maxWords / maxChars tune chunk size
+  "screenStyle": "framed",              // narrated screen recordings: framed (card) | full | fill (full-bleed)
+  "slate": {"logo": "brand/logo.svg", "dur": 4},   // logo end slate after the last word; see "End slate" below
   "sfx": {"whoosh": true, "pop": true}, // subtle entrance sounds; false to disable
   "music": {"src": "music/bed.mp3", "volume": 0.1},   // optional, licensed track only
   "fadeOut": 1.2,                       // optional fade to black over the last N seconds
@@ -112,7 +115,36 @@ Without `value`, `text` is set large as a key point.
 `{"type":"zoom","at":"click start building","until":"and you're in","rect":[0.38,0.74,0.24,0.14]}`
 `rect` is `[x, y, w, h]` as fractions of the recorded screen. `scale` overrides the automatic fit (max 4), and `in` sets the zoom-in seconds (default 1.0). Zoom to whatever is being talked about within about a second of it being said; one zoom per idea.
 
+While the zoom holds, the frame keeps moving:
+
+- **`drift`**: a slow push-in, 4% by default. `"drift": 0` holds still.
+- **`to`**: a follow pan for content that streams in or runs down the page. Give one rect, or a list of rects visited in turn; the zoom pans from `rect` to each over the hold. `toScale` fixes the zoom level for those rects.
+
+`{"type":"zoom","at":"and it writes","until":"in seconds","rect":[0.05,0.1,0.6,0.3],"to":[0.05,0.45,0.6,0.35]}`
+
+**`mark`**: a highlighter stroke (or a ring) on one line of a narrated screen recording, timed to the words. It's drawn inside the recording, so it rides along with any zoom. Only valid on screen-recording segments.
+`{"type":"mark","at":"change the conclusion","until":"per person","rect":[0.19,0.16,0.36,0.03]}`
+`rect` is in the same fractions as `zoom`. The default style is a highlighter wipe (the theme's `pop` color, multiplied, so it reads on light UIs). On dark UIs use `"style":"ring"`: an outline with a soft glow. Set a `--mark` color through `theme` to change both. Keep the page still while a mark shows; it doesn't follow scrolling.
+
 **`html`**: escape hatch. Pass `"file":"custom/thing.html"`, a fragment that gets a fade/rise entrance and exit. Scope its CSS under a unique class. No `<script>`.
+
+### End slate
+
+`"slate"` at the top level adds a logo card **after** the last word: a dissolve from the final frame, then the logo rises in and the lines below it follow. Music and `fadeOut` run through the slate.
+
+```json
+"slate": {"logo": "brand/logo.svg", "dur": 4, "tagline": "Free to try", "url": "acme.com/app"}
+```
+
+- Set the pieces directly:
+  - `logo`: an image path in the project, sized by `logoHeight` (default 120 px)
+  - `text`: a typed wordmark, used when there's no logo
+  - `sublogo`: an image path, sized by `sublogoHeight`
+  - `tagline`, `url`: lines of text under the logo
+  - `bg`: any CSS background (default: the theme's `dark-bg`)
+- `dur`: 3–5 s; default 4.
+- `brand`: a saved logo set from `assets/themes.json` → `brands` (empty to start). Add yours there, with paths relative to the skill folder, and every video can use `"slate": {"brand": "acme"}`.
+- Use your own company's logo only. A partner's logo needs their approval; credit them in text instead.
 
 ### Placement rules the build checks
 
@@ -120,4 +152,5 @@ Without `value`, `text` is set large as a key point.
 - Two overlays in the same zone at the same time trigger a warning.
 - Anything that starts underneath a full-frame `title` is pushed to the title's end.
 - Captions hide during titles and switch to a dark box during demos and screen recordings.
-- `screen`, `chat`, `bubbles`, and `demo` on top of a screen recording trigger a warning. Use `zoom`, `callout`, or `title` there.
+- `screen`, `chat`, `bubbles`, and `demo` on top of a screen recording trigger a warning. Use `zoom`, `mark`, `callout`, or `title` there.
+- `zoom` and `mark` must start inside a screen recording; they're trimmed at its end.

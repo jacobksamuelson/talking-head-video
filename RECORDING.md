@@ -75,6 +75,10 @@ Use these when it's easier to *show* the product while you talk than to talk to 
 
 In the finished video, your screen shows as a clean rounded card on a soft background. It zooms into whatever you're talking about, with captions underneath.
 
+If you want the product to fill the whole frame (like Klaviyo's launch video), record a wide box. With **Record Selected Portion**, drag a box about 16:9 (for example 1600×900) around the browser. A tall or narrow recording gets cropped a lot at the top and bottom.
+
+Point with your words, not just the mouse. Say the line you want people to read ("it says *change the measure, change the conclusion*"), and the editor can highlight that line as you say it.
+
 Use demo or test accounts only, with **no real customer or user data** on screen.
 
 ## Product visuals

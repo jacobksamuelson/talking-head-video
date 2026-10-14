@@ -7,14 +7,14 @@ Give it a camera clip, a narrated screen recording, or both. It:
 - keeps your best takes and removes retakes, "um"s, and dead air
 - evens out and cleans up the audio, even when two recordings used different mics
 - frames your face, with punch-in zooms at the cuts
-- shows screen recordings as clean cards that zoom into what you're talking about
-- adds name tags, captions, number cards, screenshots, title cards, and an end card, each timed to the words you say
-- checks every cut before you see a draft, flagging clipped words, choppy runs of cuts, and abrupt switches
+- shows screen recordings as clean cards, or full screen, with zooms that follow what you're talking about and highlights on the line you're reading
+- adds name tags, short boxed captions, number cards, screenshots, title cards, and a logo end slate, each timed to the words you say
+- checks every cut before you see a draft, flagging clipped words, choppy runs of cuts, and abrupt switches. It also flags a video that opens with "Hi, I'm…" or closes too slowly
 - renders a 1080p MP4 ready for LinkedIn
 
-It can also write the script with you and check your camera, light, and mic from a 5-second test clip.
+It can also write the script with you and check your camera, light, and mic from a 5-second test clip. Scripts follow a simple shape: open on the viewer's problem, say what's coming, give each point an example, and end in a sentence or two.
 
-Inspired by Toast's product launch videos (Maggie Crowley).
+Inspired by Toast's product launch videos (Maggie Crowley) and Klaviyo's Composer launch (Elias Torres).
 
 ## Install
 

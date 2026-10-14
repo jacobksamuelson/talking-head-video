@@ -46,9 +46,9 @@
   var FULL_CLIP = "inset(0.0px 0.0px 0.0px 0.0px round 0.0px)";
   function screenGeom(seg) {
     var r = seg.screen, cx = r.x * W, cy = r.y * H, cw = r.w * W, ch = r.h * H;
-    var full = S.screenStyle === "full";
+    var fill = S.screenStyle === "fill", full = fill || S.screenStyle === "full";
     var dy = full ? 0 : (S.captionsOn ? -34 : 0);
-    var s = full ? 1 : Math.min((W - 240) / cw, (H - 150 - (S.captionsOn ? 80 : 0)) / ch, 1);
+    var s = fill ? Math.max(W / cw, H / ch) : full ? 1 : Math.min((W - 240) / cw, (H - 150 - (S.captionsOn ? 80 : 0)) / ch, 1);
     var rad = full ? 0 : 22 / s;
     return {
       s: s, dy: dy,
@@ -248,7 +248,7 @@
       }
     });
     shotMotion(tl, o);
-    if (o.end >= S.duration - 0.05) return;  // demo runs to the end: hold the PiP, no exit
+    if (o.end >= S.arollEnd - 0.05) return;  // demo runs to the end: hold the PiP, no exit
     var sEnd = pipState(segAt(o.end - 0.9));
     tl.to(ring, { opacity: 0, duration: 0.2 }, q(o.end - 0.85));
     tl.fromTo("#face", sEnd, { clipPath: FULL_CLIP, x: 0, y: 0, scale: 1, duration: 0.8, ease: "power3.inOut", immediateRender: false }, q(o.end - 0.8));
@@ -259,19 +259,48 @@
   };
 
   // smooth zoom into a region of a narrated screen recording; rect is a fraction of the screen
-  A.zoom = function (tl, o) {
-    var seg = segAt(o.start + 0.05);
-    if (seg.kind !== "screen") return;
-    var r = seg.screen, cx = r.x * W, cy = r.y * H, cw = r.w * W, ch = r.h * H, R = o.rect;
+  function zoomXf(seg, R, k) {
+    var r = seg.screen, cx = r.x * W, cy = r.y * H, cw = r.w * W, ch = r.h * H;
     var rx = cx + R[0] * cw, ry = cy + R[1] * ch, rw = R[2] * cw, rh = R[3] * ch;
-    var k = Math.max(1, Math.min(o.scale || Math.min(cw / rw, ch / rh) * 0.88, 4));
+    k = Math.max(1, Math.min(k || Math.min(cw / rw, ch / rh) * 0.88, 4));
     var X = cx + cw / 2 - k * (rx + rw / 2), Y = cy + ch / 2 - k * (ry + rh / 2);
     X = Math.min(cx * (1 - k), Math.max((cx + cw) * (1 - k), X));
     Y = Math.min(cy * (1 - k), Math.max((cy + ch) * (1 - k), Y));
+    return { x: X, y: Y, scale: k };
+  }
+  A.zoom = function (tl, o) {
+    var seg = segAt(o.start + 0.05);
+    if (seg.kind !== "screen") return;
+    var a = zoomXf(seg, o.rect, o.scale);
     var dIn = o.in || 1.0, dOut = Math.min(0.9, (o.end - o.start) / 3);
     tl.set("#face-drift", { transformOrigin: "0px 0px" }, q(o.start));
-    tl.fromTo("#face-drift", { x: 0, y: 0, scale: 1 }, { x: X, y: Y, scale: k, duration: dIn, ease: "power3.inOut", immediateRender: false }, q(o.start));
+    tl.fromTo("#face-drift", { x: 0, y: 0, scale: 1 }, { x: a.x, y: a.y, scale: a.scale, duration: dIn, ease: "power3.inOut", immediateRender: false }, q(o.start));
+    // during the hold: follow the content to the "to" rect(s), or creep in slowly so the frame never sits still
+    var h0 = o.start + dIn, h1 = o.end - dOut;
+    if (h1 - h0 > 0.4) {
+      var path = o.to ? (Array.isArray(o.to[0]) ? o.to : [o.to]) : null;
+      if (path) {
+        var step = (h1 - h0) / path.length;
+        path.forEach(function (R, i) {
+          var b = zoomXf(seg, R, o.toScale || o.scale);
+          tl.to("#face-drift", { x: b.x, y: b.y, scale: b.scale, duration: step, ease: "sine.inOut" }, q(h0 + i * step));
+        });
+      } else if (o.drift !== 0) {
+        var b = zoomXf(seg, o.rect, a.scale * (1 + (o.drift === undefined ? 0.04 : o.drift)));
+        tl.to("#face-drift", { x: b.x, y: b.y, scale: b.scale, duration: h1 - h0, ease: "sine.inOut" }, q(h0));
+      }
+    }
     tl.to("#face-drift", { x: 0, y: 0, scale: 1, duration: dOut, ease: "power3.inOut" }, q(o.end - dOut));
+  };
+
+  // highlighter stroke or ring on a line of a screen recording; it sits inside the recording,
+  // so it moves with any zoom
+  A.mark = function (tl, o) {
+    var el = "#" + o.id + "-mark", t = q(o.start);
+    tl.set(el, { opacity: 1 }, t);
+    if (o.style === "ring") tl.fromTo(el, { scale: 1.08, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: "power3.out", immediateRender: false }, t);
+    else tl.fromTo(el, { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.out", immediateRender: false }, t);
+    tl.to(el, { opacity: 0, duration: 0.3 }, q(o.end - 0.3));
   };
 
   A.endcard = function (tl, o) {
@@ -279,7 +308,7 @@
     show(tl, ov, o.start);
     enter(tl, card, o.start, { d: 0.8 });
     tl.fromTo($$(".ec-kicker, .ec-title, .ec-text", card), { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.6, ease: EASE_IN, stagger: 0.12 }, q(o.start + 0.25));
-    if (o.end < S.duration - 0.05) { exit(tl, card, o.end); hide(tl, ov, o.end); }
+    if (o.end < S.arollEnd - 0.05) { exit(tl, card, o.end); hide(tl, ov, o.end); }
   };
 
   A.html = function (tl, o) {
@@ -320,6 +349,21 @@
     });
   }
 
+  // ── logo end slate: dissolve from the last frame, logo rises in, lines follow ──
+  function slate(tl) {
+    if (!S.slate) return;
+    var t0 = S.arollEnd, xf = Math.min(0.45, t0);
+    tl.set("#slate", { visibility: "visible" }, q(t0 - xf));
+    tl.fromTo("#slate", { opacity: 0 }, { opacity: 1, duration: xf, ease: "power1.inOut", immediateRender: false }, q(t0 - xf));
+    var parts = $$(".slate-inner > *");
+    tl.set(parts, { opacity: 0 }, q(t0 - xf));
+    parts.forEach(function (el, i) {
+      var big = i === 0;
+      tl.fromTo(el, { opacity: 0, y: big ? 28 : 16, filter: "blur(" + (big ? 12 : 6) + "px)" },
+        { opacity: 1, y: 0, filter: "blur(0px)", duration: big ? 0.9 : 0.6, ease: "power3.out", immediateRender: false }, q(t0 + 0.1 + i * 0.28));
+    });
+  }
+
   function build() {
     var tl = gsap.timeline({ paused: true });
     faceMotion(tl);
@@ -327,6 +371,7 @@
     if (S.fadeOut > 0) tl.fromTo("#fade-black", { opacity: 0 }, { opacity: 1, duration: S.fadeOut, ease: "power1.in" }, q(S.duration - S.fadeOut));
     S.overlays.forEach(function (o) { A[o.type](tl, o); });
     captions(tl);
+    slate(tl);
     window.__timelines["main"] = tl;
     if (window.__hfForceTimelineRebind) window.__hfForceTimelineRebind();
   }
